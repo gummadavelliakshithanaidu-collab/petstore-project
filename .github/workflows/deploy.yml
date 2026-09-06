@@ -1,0 +1,77 @@
+name: JPetStore CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the source code from GitHub
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # Step 2: Set up JDK 11 (required for JPetStore and SonarQube runner)
+      - name: Set up JDK 11
+        uses: actions/setup-java@v3
+        with:
+          java-version: '11'
+          distribution: 'temurin'
+          cache: maven
+
+      # Step 3: Run Unit Tests and Build WAR Package
+      - name: Build with Maven
+        run: mvn clean package -DskipTests=false
+
+      # Step 4: SonarQube Code Analysis
+      - name: SonarQube Scan
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        run: |
+          mvn sonar:sonar \
+            -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} \
+            -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+
+      # Step 5: Generate custom Maven settings.xml for Nexus Authentication
+      - name: Configure Maven Settings for Nexus
+        run: |
+          mkdir -p ~/.m2
+          cat <<EOF > ~/.m2/settings.xml
+          <settings>
+            <servers>
+              <server>
+                <id>nexus-snapshots</id>
+                <username>${{ secrets.NEXUS_USER }}</username>
+                <password>${{ secrets.NEXUS_PASSWORD }}</password>
+              </server>
+              <server>
+                <id>nexus-releases</id>
+                <username>${{ secrets.NEXUS_USER }}</username>
+                <password>${{ secrets.NEXUS_PASSWORD }}</password>
+              </server>
+            </servers>
+          </settings>
+          EOF
+
+      # Step 6: Deploy Snapshot Artifact to Nexus
+      - name: Deploy Artifact to Nexus
+        run: |
+          mvn deploy -DskipTests \
+            -DaltDeploymentRepository=nexus-snapshots::default::${{ secrets.NEXUS_URL }}/repository/maven-snapshots/
+
+      # Step 7: Deploy WAR file to Tomcat Server
+      - name: Deploy WAR to Tomcat
+        run: |
+          mvn cargo:redeploy \
+            -Dcargo.hostname=$(echo "${{ secrets.TOMCAT_URL }}" | sed 's|http://||;s|:.*||') \
+            -Dcargo.servlet.port=8080 \
+            -Dcargo.remote.username=${{ secrets.TOMCAT_USER }} \
+            -Dcargo.remote.password=${{ secrets.TOMCAT_PASSWORD }} \
+            || \
+            curl --user "${{ secrets.TOMCAT_USER }}:${{ secrets.TOMCAT_PASSWORD }}" \
+              -T target/jpetstore.war \
+              "${{ secrets.TOMCAT_URL }}/manager/text/deploy?path=/jpetstore&update=true"

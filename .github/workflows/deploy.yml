@@ -66,12 +66,8 @@ jobs:
       # Step 7: Deploy WAR file to Tomcat Server
       - name: Deploy WAR to Tomcat
         run: |
-          mvn cargo:redeploy \
-            -Dcargo.hostname=$(echo "${{ secrets.TOMCAT_URL }}" | sed 's|http://||;s|:.*||') \
-            -Dcargo.servlet.port=8080 \
-            -Dcargo.remote.username=${{ secrets.TOMCAT_USER }} \
-            -Dcargo.remote.password=${{ secrets.TOMCAT_PASSWORD }} \
-            || \
-            curl --user "${{ secrets.TOMCAT_USER }}:${{ secrets.TOMCAT_PASSWORD }}" \
-              -T target/*.war \
-              "${{ secrets.TOMCAT_URL }}/manager/text/deploy?path=/jpetstore&update=true"
+          WAR_FILE=$(ls target/*.war | head -n 1)
+          echo "Deploying WAR file: $WAR_FILE"
+          curl --fail --user "${{ secrets.TOMCAT_USER }}:${{ secrets.TOMCAT_PASSWORD }}" \
+            --upload-file "$WAR_FILE" \
+            "${{ secrets.TOMCAT_URL }}/manager/text/deploy?path=/jpetstore&update=true"

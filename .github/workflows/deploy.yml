@@ -73,5 +73,5 @@ jobs:
             -Dcargo.remote.password=${{ secrets.TOMCAT_PASSWORD }} \
             || \
             curl --user "${{ secrets.TOMCAT_USER }}:${{ secrets.TOMCAT_PASSWORD }}" \
-              -T target/jpetstore.war \
+              -T target/*.war \
               "${{ secrets.TOMCAT_URL }}/manager/text/deploy?path=/jpetstore&update=true"
